@@ -172,9 +172,14 @@
                 </div>
               </div>
               
-              <a href="tel:+917259771576" className="w-full py-3 px-4 rounded-xl shadow-md shadow-slate-200/50 font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 text-center block">
-                📞 Manager: +91 7259771576
-              </a>
+              <div className="flex flex-col gap-3">
+                <a href="tel:+918123252275" className="w-full py-3 px-4 rounded-xl shadow-md shadow-emerald-200/50 font-bold text-white bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 text-center block">
+                  📞 Driver: +91 8123252275
+                </a>
+                <a href="tel:+917259771576" className="w-full py-3 px-4 rounded-xl shadow-md shadow-slate-200/50 font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 text-center block">
+                  📞 Manager: +91 7259771576
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -328,7 +333,6 @@
               userUid: user.uid, email: user.email, rewardId: reward.id, title: reward.title, cost: reward.cost, timestamp: serverTimestamp()
             });
 
-            // Using the NEW template ID for reward redemption
             emailjs.send(
               "service_k94my2d",            
               "template_8qjjc6l",           
@@ -344,7 +348,7 @@
               triggerConfetti();
               alert(`🎉 Success! Your ${reward.title} has been redeemed. We have sent the voucher details to your email: ${user.email}`);
             }).catch((err) => {
-              triggerConfetti(); // Still trigger confetti if DB succeeds but email fails
+              triggerConfetti();
               alert("Reward redeemed in app, but the confirmation email failed. Error: " + err.text);
             });
             
@@ -419,7 +423,6 @@
                 )}
                 <button onClick={handleReset} disabled={resetting} className="text-sm font-semibold text-red-600 hover:text-white border border-red-200 bg-red-50 hover:bg-red-500 px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-2 hidden sm:flex">{resetting ? 'Wiping...' : 'Reset'}</button>
                 
-                {/* ROLE BASED ACCESS CONTROL (RBAC) */}
                 {user.email === ADMIN_EMAIL && (
                   <button onClick={() => setIsAdminView(!isAdminView)} className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-colors">
                     {isAdminView ? 'Student View' : 'Admin Demo'}
