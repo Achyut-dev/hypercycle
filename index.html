@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperCycle | E-Waste MVP</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    
+    @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-slide-up { opacity: 0; animation: fadeSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .delay-100 { animation-delay: 0.1s; } .delay-200 { animation-delay: 0.2s; } .delay-300 { animation-delay: 0.3s; } .delay-400 { animation-delay: 0.4s; }
+    
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .animate-float { animation: float 4s ease-in-out infinite; }
+
+    @keyframes shimmer { 100% { transform: translateX(100%); } }
+    .shimmer-btn { position: relative; overflow: hidden; }
+    .shimmer-btn::after {
+      content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%);
+      animation: shimmer 2.5s infinite;
+    }
+
+    /* Simulated Live Tracking GPS Animation */
+    @keyframes gpsPing {
+      0% { transform: scale(1); opacity: 0.8; }
+      100% { transform: scale(3); opacity: 0; }
+    }
+    .animate-radar { animation: gpsPing 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+    
+    @keyframes agentMove {
+      0% { transform: translate(0px, 0px); }
+      25% { transform: translate(40px, -20px); }
+      50% { transform: translate(80px, 10px); }
+      75% { transform: translate(120px, -15px); }
+      100% { transform: translate(160px, 0px); }
+    }
+    .animate-agent { animation: agentMove 12s linear infinite alternate; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, setPersistence, inMemoryPersistence, signInWithPopup, GoogleAuthProvider, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, collection, addDoc, query, where, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const { useState, useEffect, useRef } = React;
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCtC5wJAyplNDPg4GYdWmBd2mMBFdZlZ7U",
+      authDomain: "rvce-app-6c764.firebaseapp.com",
+      projectId: "rvce-app-6c764",
+      storageBucket: "rvce-app-6c764.firebasestorage.app",
+      messagingSenderId: "403563815243",
+      appId: "1:403563815243:web:d78982dc1ec95d00cfc8ce",
+      measurementId: "G-L2LSRPSYX8"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    setPersistence(auth, inMemoryPersistence).catch(console.error);
+
+    const POINTS_MAP = { "Laptop": 180, "Mobile": 80, "Battery": 20, "Large Appliance": 300, "Other": 50 };
+    
+    const REWARDS_CATALOG = [
+      { id: 'amz500', title: 'Amazon Pay Voucher ₹500', cost: 1200, icon: '🎁', color: 'amber' },
+      { id: 'bms250', title: 'BookMyShow ₹250 Voucher', cost: 600, icon: '🎟️', color: 'rose' },
+      { id: 'zom200', title: 'Zomato ₹200 Gift Card', cost: 500, icon: '🍔', color: 'red' },
+      { id: 'cali150', title: 'California Burrito Free Taco', cost: 350, icon: '🌮', color: 'emerald' }
+    ];
+
+    const triggerConfetti = () => {
+      confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 }, colors: ['#10b981', '#34d399', '#059669', '#fbbf24'], disableForReducedMotion: true });
+    };
+
+    function NotificationModal({ data, onClose }) {
+      useEffect(() => { const timer = setTimeout(onClose, 5000); return () => clearTimeout(timer); }, []);
+      return (
+        <div className="fixed top-6 right-6 z-[100] w-80 bg-white border border-emerald-100 shadow-2xl rounded-2xl p-4 animate-slide-up">
+          <div className="flex items-center gap-3 mb-3">
+             <div className="bg-emerald-500 p-2 rounded-full text-white text-sm">✓</div>
+             <p className="font-bold text-emerald-800">Order Dispatched!</p>
+          </div>
+          <div className="text-sm text-slate-600 space-y-1">
+            <p><strong>Item:</strong> {data.quantity}x {data.category}</p>
+            <p><strong>Slot:</strong> {data.slot}</p>
+            <p><strong>Points:</strong> {data.points} pts</p>
+          </div>
+        </div>
+      );
+    }
+
+    function TrackingModal({ order, onClose }) {
+      if (!order) return null;
+      
+      const AGENT_NAMES = ["Achyut", "Aditya", "Aharna", "Vishal"];
+      const agentIndex = order.id ? order.id.charCodeAt(0) % AGENT_NAMES.length : 0;
+      const agentName = AGENT_NAMES[agentIndex];
+      
+      return (
+        <div className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-slide-up">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+            <div className="bg-slate-800 p-4 flex justify-between items-center text-white">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
+                <h3 className="font-bold tracking-wide">Live Agent Tracking</h3>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-700 w-8 h-8 rounded-full font-bold transition-colors">✕</button>
+            </div>
+            
+            <div className="h-64 bg-slate-100 relative overflow-hidden">
+              <iframe width="100%" height="100%" frameBorder="0" scrolling="no" marginHeight="0" marginWidth="0" className="opacity-70 contrast-125 saturate-50" src="https://maps.google.com/maps?q=RV%20College%20of%20Engineering,%20Bengaluru&t=&z=15&ie=UTF8&iwloc=&output=embed"></iframe>
+              <div className="absolute inset-0 z-10 pointer-events-none">
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                   <div className="w-4 h-4 bg-emerald-500 rounded-full relative z-20 border-2 border-white shadow-lg"></div>
+                   <div className="w-4 h-4 bg-emerald-500 rounded-full absolute top-0 left-0 animate-radar"></div>
+                </div>
+                <div className="absolute top-[30%] left-[20%] animate-agent bg-white py-1 px-2 rounded-lg shadow-lg border border-slate-200 flex items-center gap-1">
+                   <span className="text-lg">🚚</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white">
+              <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-xl shadow-inner border border-emerald-200">👨🏽‍🔧</div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{agentName}</p>
+                    <p className="text-xs font-semibold text-emerald-600">Recovery Agent</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-500 font-bold uppercase mb-0.5">ETA</p>
+                  <p className="text-lg font-black text-emerald-600">12 Mins</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-5">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Vehicle Info</p>
+                  <p className="text-sm font-semibold text-slate-700 mt-0.5 truncate">Tata Ace EV</p>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">KA 01 EF 8492</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Target Payload</p>
+                  <p className="text-sm font-semibold text-slate-700 mt-0.5 truncate">{order.quantity}x {order.category}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 truncate">{order.address}</p>
+                </div>
+              </div>
+              
+              <a href="tel:+917259771576" className="w-full py-3 px-4 rounded-xl shadow-md shadow-slate-200/50 font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 active:scale-[0.98] transition-all duration-200 flex justify-center items-center gap-2 text-center block">
+                📞 Manager: +91 7259771576
+              </a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function LoginScreen({ onLogin }) {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const handleGoogleLogin = async () => {
+        setLoading(true); setError('');
+        try {
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          const result = await signInWithPopup(auth, provider);
+          onLogin(result.user);
+        } catch (err) { setError("Failed to sign in. Please try again."); }
+        setLoading(false);
+      };
+
+      const handleClearSessions = async () => {
+        try {
+          await signOut(auth);
+          localStorage.clear(); sessionStorage.clear(); window.location.reload();
+        } catch (err) { console.error("Error clearing sessions:", err); }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-md border border-slate-100 animate-slide-up relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-32 h-32 rounded-full bg-green-50 opacity-50 blur-2xl"></div>
+            <div className="text-center mb-10 relative z-10">
+              <div className="bg-green-100 w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-6 shadow-inner text-3xl animate-float">♻️</div>
+              <h2 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-emerald-400 tracking-tight">HyperCycle</h2>
+              <p className="text-slate-500 mt-3 font-medium">Smart E-Waste Recovery</p>
+            </div>
+            
+            {error && <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm text-center font-medium border border-red-100">{error}</div>}
+
+            <div className="relative z-10 flex flex-col gap-3">
+              <button onClick={handleGoogleLogin} disabled={loading} className="w-full py-4 px-4 flex items-center justify-center gap-3 rounded-xl shadow-md shadow-slate-200/50 font-semibold text-slate-700 bg-white border border-slate-200 hover:border-green-300 hover:bg-green-50 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98] disabled:opacity-50">
+                <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="Google" />
+                {loading ? 'Connecting securely...' : 'Continue with Google'}
+              </button>
+              <button onClick={handleClearSessions} className="w-full py-3 px-4 flex items-center justify-center gap-2 rounded-xl font-semibold text-slate-500 bg-transparent hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-all duration-200 text-sm">
+                <span className="text-base">🧹</span> Clear all active sessions
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Dashboard({ user, onLogout }) {
+      const [isAdminView, setIsAdminView] = useState(false);
+      const [activeTab, setActiveTab] = useState('dashboard');
+      
+      const [pickups, setPickups] = useState([]);
+      const [spentPoints, setSpentPoints] = useState(0);
+      const [loading, setLoading] = useState(true);
+      const [resetting, setResetting] = useState(false);
+      const [showNotif, setShowNotif] = useState(null);
+      const [submitting, setSubmitting] = useState(false);
+      const [trackingOrder, setTrackingOrder] = useState(null);
+
+      const [formData, setFormData] = useState({ name: user.displayName || '', usn: '', address: '', category: 'Laptop', quantity: 1, notes: '', slot: 'Morning (9AM - 12PM)' });
+      const [metrics, setMetrics] = useState({ points: 0, co2: 0, items: 0, completed: 0, pending: 0 });
+      const prevCompletedRef = useRef(0);
+
+      useEffect(() => {
+        let q = isAdminView 
+          ? query(collection(db, "pickups"), orderBy("timestamp", "desc"))
+          : query(collection(db, "pickups"), where("userUid", "==", user.uid));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          const docs = [];
+          let m = { points: 0, co2: 0, items: 0, completed: 0, pending: 0 };
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            docs.push({ id: doc.id, ...data });
+
+            if (!isAdminView && data.userUid === user.uid) {
+              if (data.status === 'Completed') {
+                m.completed += 1; m.items += Number(data.quantity); m.points += Number(data.points); m.co2 += (Number(data.quantity) * 2.5);
+              } else { m.pending += 1; }
+            }
+          });
+          
+          if (!isAdminView) docs.sort((a,b) => b.timestamp - a.timestamp);
+          setPickups(docs);
+          
+          if (!isAdminView) {
+            setMetrics(m);
+            if (m.completed > prevCompletedRef.current && prevCompletedRef.current !== 0) triggerConfetti();
+            prevCompletedRef.current = m.completed;
+          }
+          setLoading(false);
+        });
+        return () => unsubscribe();
+      }, [user, isAdminView]);
+
+      useEffect(() => {
+        if (isAdminView) return;
+        const qRedemptions = query(collection(db, "redemptions"), where("userUid", "==", user.uid));
+        const unsubscribe = onSnapshot(qRedemptions, (snapshot) => {
+          let spent = 0;
+          snapshot.forEach(doc => { spent += doc.data().cost; });
+          setSpentPoints(spent);
+        });
+        return () => unsubscribe();
+      }, [user, isAdminView]);
+
+      const availableBalance = metrics.points - spentPoints;
+
+      const handleBookPickup = async (e) => {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+          const estPoints = POINTS_MAP[formData.category] * formData.quantity;
+          const newOrder = { ...formData, userUid: user.uid, email: user.email, status: 'Pending', points: estPoints, timestamp: serverTimestamp() };
+          
+          await addDoc(collection(db, "pickups"), newOrder);
+          setShowNotif(newOrder);
+
+          emailjs.send("service_k94my2d", "template_myqxaza", {
+            name: formData.name, to_email: user.email, email: user.email, category: formData.category,
+            quantity: formData.quantity, address: formData.address, slot: formData.slot, points: estPoints,
+            time: new Date().toLocaleTimeString(), message: "Your E-waste pickup has been successfully scheduled."
+          }, "FGc4lzGs2bmT9DB20").then(() => {
+            alert("Success! Check your Gmail (" + user.email + ") for the confirmation.");
+          }).catch((err) => {
+            alert("Order booked, but email failed. Error: " + err.text);
+          });
+
+          setFormData({ ...formData, quantity: 1, notes: '' });
+        } catch (err) { alert("Error booking pickup."); }
+        setSubmitting(false);
+      };
+
+      const handleRedeem = async (reward) => {
+        if (availableBalance < reward.cost) {
+          alert(`Insufficient balance. You need ${reward.cost - availableBalance} more points to claim this reward.`);
+          return;
+        }
+        
+        if(window.confirm(`Redeem ${reward.title} for ${reward.cost} points?`)) {
+          try {
+            await addDoc(collection(db, "redemptions"), {
+              userUid: user.uid, email: user.email, rewardId: reward.id, title: reward.title, cost: reward.cost, timestamp: serverTimestamp()
+            });
+
+            // Using the NEW template ID for reward redemption
+            emailjs.send(
+              "service_k94my2d",            
+              "template_8qjjc6l",           
+              {
+                name: user.displayName || 'User',
+                to_email: user.email,
+                reward_title: reward.title,
+                points_spent: reward.cost,
+                time: new Date().toLocaleTimeString()
+              },
+              "FGc4lzGs2bmT9DB20"          
+            ).then(() => {
+              triggerConfetti();
+              alert(`🎉 Success! Your ${reward.title} has been redeemed. We have sent the voucher details to your email: ${user.email}`);
+            }).catch((err) => {
+              triggerConfetti(); // Still trigger confetti if DB succeeds but email fails
+              alert("Reward redeemed in app, but the confirmation email failed. Error: " + err.text);
+            });
+            
+          } catch (error) {
+            alert("Failed to process redemption. Please try again.");
+          }
+        }
+      };
+
+      const handleStatusChange = async (id, newStatus) => {
+        try { 
+          await updateDoc(doc(db, "pickups", id), { status: newStatus }); 
+          if (newStatus === 'Completed') triggerConfetti();
+        } catch (err) { console.error("Error updating:", err); }
+      };
+
+      const handleReset = async () => {
+        const confirmMsg = isAdminView ? "Admin Override: Wipe EVERY order in the database?" : "Reset your account data to 0?";
+        if (!window.confirm(confirmMsg)) return;
+        setResetting(true);
+        try {
+          const targetPickups = isAdminView ? pickups : pickups.filter(p => p.userUid === user.uid);
+          for (const p of targetPickups) { await deleteDoc(doc(db, "pickups", p.id)); }
+          
+          if (!isAdminView) {
+            const redemptions = await getDocs(query(collection(db, "redemptions"), where("userUid", "==", user.uid)));
+            redemptions.forEach(async (d) => { await deleteDoc(doc(db, "redemptions", d.id)); });
+          }
+        } catch (err) { alert("Failed to reset data. Check console."); }
+        setResetting(false);
+      };
+
+      const MetricCard = ({ title, value, icon, color, delay }) => (
+        <div className={`bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 animate-slide-up ${delay} relative overflow-hidden group`}>
+          <div className={`absolute top-0 right-0 w-24 h-24 bg-${color}-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110`}></div>
+          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider relative z-10 flex items-center gap-2"><span className="text-lg animate-float" style={{ display: 'inline-block' }}>{icon}</span> {title}</p>
+          <p className="text-4xl font-black text-slate-800 mt-3 relative z-10">{value}</p>
+        </div>
+      );
+
+      const getStepInfo = (status) => {
+        if (status === 'Pending') return { step: 1, label: 'Order Received' };
+        if (status === 'Accepted') return { step: 2, label: 'Agent Assigned' };
+        if (status === 'Processing') return { step: 3, label: 'Agent En Route' };
+        if (status === 'Completed') return { step: 4, label: 'Recycled Successfully' };
+        return { step: 1, label: 'Order Received' };
+      };
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          {showNotif && <NotificationModal data={showNotif} onClose={() => setShowNotif(null)} />}
+          <TrackingModal order={trackingOrder} onClose={() => setTrackingOrder(null)} />
+          
+          <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-md font-bold text-xl">H</div>
+                <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-emerald-500 hidden sm:block">HyperCycle</h1>
+                
+                {!isAdminView && (
+                  <div className="ml-6 flex space-x-2 bg-slate-100 p-1 rounded-xl hidden md:flex">
+                    <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${activeTab === 'dashboard' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Dashboard</button>
+                    <button onClick={() => setActiveTab('rewards')} className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all flex items-center gap-1.5 ${activeTab === 'rewards' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>🎁 Rewards</button>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-3 md:gap-4">
+                {!isAdminView && (
+                  <button onClick={() => setActiveTab(activeTab === 'dashboard' ? 'rewards' : 'dashboard')} className="md:hidden text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
+                    {activeTab === 'dashboard' ? '🎁 Rewards' : '📦 Dashboard'}
+                  </button>
+                )}
+                <button onClick={handleReset} disabled={resetting} className="text-sm font-semibold text-red-600 hover:text-white border border-red-200 bg-red-50 hover:bg-red-500 px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-2 hidden sm:flex">{resetting ? 'Wiping...' : 'Reset'}</button>
+                <button onClick={() => setIsAdminView(!isAdminView)} className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-colors">{isAdminView ? 'Student View' : 'Admin Demo'}</button>
+                <button onClick={onLogout} className="text-sm font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-xl transition-all shadow-sm">Exit</button>
+              </div>
+            </div>
+          </header>
+
+          <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+            {isAdminView ? (
+              <div className="space-y-6 animate-slide-up">
+                <div className="flex justify-between items-end mb-8">
+                  <div>
+                    <h2 className="text-3xl font-extrabold text-slate-800">Dispatch Command</h2>
+                    <p className="text-slate-500 mt-1 font-medium">Real-time logistics overview</p>
+                  </div>
+                  <div className="bg-white px-5 py-2.5 rounded-xl shadow-sm border border-slate-200 text-sm font-bold text-slate-700">
+                    Active: <span className="text-emerald-500 text-lg">{pickups.length}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                  <table className="min-w-full divide-y divide-slate-100">
+                    <thead className="bg-slate-50/50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Citizen</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Payload / Slot</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Points Expected</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Status Protocol</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pickups.length === 0 && <tr><td colSpan="4" className="text-center py-12 text-slate-400 font-medium">Awaiting first dispatch...</td></tr>}
+                      {pickups.map(p => (
+                        <tr key={p.id} className="hover:bg-emerald-50/30 transition-colors group">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-bold text-slate-800">{p.name || 'Anonymous'}</div>
+                            <div className="text-sm text-slate-500">{p.email}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-slate-800 font-bold flex items-center gap-2">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{p.quantity}x</span> {p.category}
+                            </div>
+                            <div className="text-sm text-slate-500 truncate max-w-[200px] mt-1">{p.address}</div>
+                            <div className="text-xs text-emerald-600 font-bold mt-1 bg-emerald-50 inline-block px-2 py-0.5 rounded-md">{p.slot}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-black text-emerald-600 bg-emerald-50 inline-block px-3 py-1 rounded-lg">
+                              {p.points} <span className="text-xs font-semibold text-emerald-500">pts</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <select 
+                              value={p.status} 
+                              onChange={(e) => handleStatusChange(p.id, e.target.value)}
+                              className={`text-sm rounded-xl py-2 pl-4 pr-8 font-bold border-0 ring-1 ring-inset shadow-sm focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer
+                                ${p.status === 'Completed' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : p.status === 'Pending' ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-blue-50 text-blue-700 ring-blue-200'}`}
+                            >
+                              <option value="Pending">🟡 Pending</option>
+                              <option value="Accepted">🔵 Accepted</option>
+                              <option value="Processing">🟣 Processing</option>
+                              <option value="Completed">🟢 Completed</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : activeTab === 'rewards' ? (
+              
+              <div className="space-y-8 animate-slide-up">
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                  <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+                    <div>
+                      <h2 className="text-3xl font-extrabold tracking-tight mb-2">Rewards Store</h2>
+                      <p className="text-slate-300 text-sm font-medium">Turn your recycled e-waste into real-world value.</p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl text-center min-w-[200px]">
+                      <p className="text-xs text-slate-300 font-bold uppercase tracking-widest mb-1">Available Balance</p>
+                      <p className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 to-green-300">{availableBalance}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
+                  {REWARDS_CATALOG.map((reward, idx) => {
+                    const isAffordable = availableBalance >= reward.cost;
+                    return (
+                      <div key={reward.id} className={`bg-white rounded-2xl border ${isAffordable ? 'border-emerald-200 shadow-xl shadow-emerald-500/10' : 'border-slate-200 shadow-sm opacity-80'} p-6 relative overflow-hidden transition-all hover:-translate-y-1 animate-slide-up`} style={{ animationDelay: `${idx * 0.1}s` }}>
+                        <div className={`text-4xl mb-4 p-4 rounded-2xl inline-block bg-${reward.color}-50 border border-${reward.color}-100`}>{reward.icon}</div>
+                        <h3 className="text-lg font-bold text-slate-800 leading-tight mb-2">{reward.title}</h3>
+                        
+                        <div className="flex items-end justify-between mt-6">
+                          <div>
+                            <p className="text-xs text-slate-500 font-bold uppercase mb-0.5">Cost</p>
+                            <p className={`text-xl font-black ${isAffordable ? 'text-emerald-600' : 'text-slate-400'}`}>{reward.cost} <span className="text-xs">pts</span></p>
+                          </div>
+                          <button 
+                            onClick={() => handleRedeem(reward)}
+                            disabled={!isAffordable}
+                            className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all ${isAffordable ? 'bg-slate-800 text-white hover:bg-slate-900 active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                          >
+                            {isAffordable ? 'Redeem' : 'Locked'}
+                          </button>
+                        </div>
+                        
+                        {!isAffordable && (
+                          <div className="mt-4 pt-4 border-t border-slate-100">
+                            <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
+                              <span>Progress</span>
+                              <span>{Math.round((availableBalance / reward.cost) * 100)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-1.5">
+                              <div className="bg-emerald-400 h-1.5 rounded-full" style={{ width: `${Math.min((availableBalance / reward.cost) * 100, 100)}%` }}></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            ) : (
+              
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="lg:col-span-8 space-y-8">
+                  <div>
+                    <h2 className="text-2xl font-extrabold text-slate-800 mb-6 animate-slide-up">Your Impact</h2>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <MetricCard title="Available Balance" value={availableBalance} icon="✨" color="green" delay="delay-100" />
+                      <MetricCard title="CO₂ Saved" value={`${metrics.co2}kg`} icon="🌳" color="blue" delay="delay-200" />
+                      <MetricCard title="Recycled" value={metrics.items} icon="📱" color="amber" delay="delay-300" />
+                      <MetricCard title="Completed" value={metrics.completed} icon="✅" color="purple" delay="delay-400" />
+                    </div>
+                  </div>
+
+                  <div className="animate-slide-up delay-400">
+                    <h3 className="text-xl font-extrabold text-slate-800 mb-4 flex items-center gap-2">
+                      Live Manifest <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span>
+                    </h3>
+                    
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden max-h-[500px] overflow-y-auto">
+                      {pickups.length === 0 ? (
+                        <div className="text-center py-16 px-4">
+                          <div className="text-5xl mb-4 animate-float block">🛸</div>
+                          <h4 className="text-lg font-bold text-slate-700">No active missions</h4>
+                          <p className="text-slate-500 mt-1">Your manifest is empty. Book a pickup to begin!</p>
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-slate-100">
+                          {pickups.map(p => {
+                            const { step, label } = getStepInfo(p.status);
+
+                            return (
+                              <li key={p.id} className="p-6 hover:bg-slate-50 transition-colors block">
+                                <div className="flex items-start justify-between mb-4">
+                                  <div className="flex items-center gap-4">
+                                    <div className="bg-slate-100/80 p-3.5 rounded-xl text-xl shadow-inner border border-slate-200">📦</div>
+                                    <div>
+                                      <p className="text-sm font-bold text-slate-800">{p.quantity}x {p.category}</p>
+                                      <p className="text-xs font-semibold text-emerald-600 mt-1">+{p.points} Points {p.status === 'Completed' ? 'Earned' : 'pending'}</p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold shadow-sm border ${step === 4 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : step === 1 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                      {label}
+                                    </span>
+                                    <p className="text-[10px] text-slate-400 font-medium mt-2">{p.slot}</p>
+                                  </div>
+                                </div>
+
+                                <div className="mt-4 relative pt-1">
+                                  <div className="flex mb-2 items-center justify-between">
+                                    <div className="text-center w-1/4"><div className={`w-4 h-4 mx-auto rounded-full ${step >= 1 ? 'bg-emerald-500 shadow-lg shadow-emerald-200' : 'bg-slate-200'} transition-all duration-500`}></div></div>
+                                    <div className="text-center w-1/4"><div className={`w-4 h-4 mx-auto rounded-full ${step >= 2 ? 'bg-emerald-500 shadow-lg shadow-emerald-200' : 'bg-slate-200'} transition-all duration-500`}></div></div>
+                                    <div className="text-center w-1/4"><div className={`w-4 h-4 mx-auto rounded-full ${step >= 3 ? 'bg-emerald-500 shadow-lg shadow-emerald-200' : 'bg-slate-200'} transition-all duration-500`}></div></div>
+                                    <div className="text-center w-1/4"><div className={`w-4 h-4 mx-auto rounded-full ${step >= 4 ? 'bg-emerald-500 shadow-lg shadow-emerald-200' : 'bg-slate-200'} transition-all duration-500`}></div></div>
+                                  </div>
+                                  <div className="overflow-hidden h-1 mb-4 text-xs flex rounded bg-slate-100 mx-4 relative -top-3.5 z-[-1]">
+                                    <div style={{ width: `${((step - 1) / 3) * 100}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-emerald-500 transition-all duration-1000 ease-out"></div>
+                                  </div>
+                                </div>
+                                
+                                {p.status !== 'Completed' && (
+                                  <div className="mt-4 pt-4 border-t border-slate-100">
+                                    <button 
+                                      onClick={() => setTrackingOrder(p)} 
+                                      className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                      <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span>
+                                      Open Live Tracker 📍
+                                    </button>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-4 animate-slide-up delay-200">
+                  <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-6 sticky top-24 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-bl-full -mr-10 -mt-10 opacity-60"></div>
+                    <h3 className="text-xl font-extrabold text-slate-800 mb-6 relative z-10">Initiate Pickup</h3>
+                    
+                    <form onSubmit={handleBookPickup} className="space-y-5 relative z-10">
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Full Name</label>
+                         <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:bg-white transition-all text-sm font-medium" placeholder="John Doe" />
+                      </div>
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Collection Address</label>
+                         <input type="text" required value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:bg-white transition-all text-sm font-medium" placeholder="Room 101, Hostel Block B" />
+                      </div>
+                      
+                      <div>
+                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Preferred Slot</label>
+                         <select required value={formData.slot} onChange={e => setFormData({...formData, slot: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:bg-white transition-all text-sm font-medium cursor-pointer">
+                           <option>Morning (9AM - 12PM)</option>
+                           <option>Afternoon (12PM - 4PM)</option>
+                           <option>Evening (4PM - 7PM)</option>
+                         </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Category</label>
+                          <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:bg-white transition-all text-sm font-medium cursor-pointer">
+                            {Object.keys(POINTS_MAP).map(key => <option key={key} value={key}>{key}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Qty</label>
+                          <input type="number" min="1" max="50" required value={formData.quantity} onChange={e => setFormData({...formData, quantity: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:bg-white transition-all text-sm font-medium" />
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl p-4 border border-emerald-100 flex justify-between items-center mt-2 shadow-inner">
+                        <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide">Expected Points</span>
+                        <span className="text-xl font-black text-emerald-600">{POINTS_MAP[formData.category] * formData.quantity} <span className="text-sm">pts</span></span>
+                      </div>
+
+                      <button type="submit" disabled={submitting} className="w-full py-3.5 px-4 rounded-xl shadow-lg shadow-emerald-200 font-bold text-white bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 mt-4 transition-all duration-200 flex justify-center items-center gap-2 shimmer-btn">
+                        {submitting ? (
+                          <svg className="animate-spin h-5 w-5 text-white relative z-10" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        ) : <span className="relative z-10">Confirm Dispatch</span>}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged((currentUser) => { setUser(currentUser); setLoading(false); });
+        return () => unsubscribe();
+      }, []);
+
+      const handleLogout = async () => { await signOut(auth); setUser(null); };
+
+      if (loading) return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin"></div>
+            <div className="text-emerald-600 font-bold tracking-widest text-sm animate-pulse uppercase">Initializing Core...</div>
+          </div>
+        </div>
+      );
+
+      return <div>{!user ? <LoginScreen onLogin={setUser} /> : <Dashboard user={user} onLogout={handleLogout} />}</div>;
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
