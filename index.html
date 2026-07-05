@@ -11,6 +11,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   
+  <!-- EmailJS Library -->
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 
   <style>
@@ -88,6 +89,8 @@
       { id: 'zom200', title: 'Zomato ₹200 Gift Card', cost: 500, icon: '🍔', color: 'red' },
       { id: 'cali150', title: 'California Burrito Free Taco', cost: 350, icon: '🌮', color: 'emerald' }
     ];
+
+    const ADMIN_EMAIL = "achyutayodhya@gmail.com";
 
     const triggerConfetti = () => {
       confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 }, colors: ['#10b981', '#34d399', '#059669', '#fbbf24'], disableForReducedMotion: true });
@@ -415,7 +418,14 @@
                   </button>
                 )}
                 <button onClick={handleReset} disabled={resetting} className="text-sm font-semibold text-red-600 hover:text-white border border-red-200 bg-red-50 hover:bg-red-500 px-4 py-2 rounded-xl transition-all shadow-sm flex items-center gap-2 hidden sm:flex">{resetting ? 'Wiping...' : 'Reset'}</button>
-                <button onClick={() => setIsAdminView(!isAdminView)} className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-colors">{isAdminView ? 'Student View' : 'Admin Demo'}</button>
+                
+                {/* ROLE BASED ACCESS CONTROL (RBAC) */}
+                {user.email === ADMIN_EMAIL && (
+                  <button onClick={() => setIsAdminView(!isAdminView)} className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-colors">
+                    {isAdminView ? 'Student View' : 'Admin Demo'}
+                  </button>
+                )}
+
                 <button onClick={onLogout} className="text-sm font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 hover:bg-slate-50 px-4 py-2 rounded-xl transition-all shadow-sm">Exit</button>
               </div>
             </div>
